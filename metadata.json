@@ -1,0 +1,7 @@
+{
+  "name": "SFL NeuroPersona Playground",
+  "description": "A multi-agent exploration of personality through SFL, ADHD, and INFJ lenses, featuring semantic and episodic memory simulation.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
