@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useEffect, useState, useRef } from 'react';
-import { XMarkIcon, CpuChipIcon, BoltIcon, ChatBubbleBottomCenterTextIcon, CubeIcon, UserCircleIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, CpuChipIcon, BoltIcon, ChatBubbleBottomCenterTextIcon, CubeIcon, UserCircleIcon, EyeIcon, PaperAirplaneIcon, UserIcon } from '@heroicons/react/24/outline';
 import { Creation } from './CreationHistory';
+import { continueMultiAgentSimulation } from '../services/gemini';
 
 interface LivePreviewProps {
   creation: Creation | null;
@@ -20,13 +21,15 @@ const AgentAvatar = ({ agent }: { agent: string }) => {
         Spark: "bg-amber-500/10 text-amber-400 border-amber-500/20",
         Mystic: "bg-violet-500/10 text-violet-400 border-violet-500/20",
         Synthesizer: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+        User: "bg-zinc-700/50 text-zinc-300 border-zinc-600/50"
     };
 
     const icons: Record<string, any> = {
         Linguist: ChatBubbleBottomCenterTextIcon,
         Spark: BoltIcon,
         Mystic: UserCircleIcon,
-        Synthesizer: CubeIcon
+        Synthesizer: CubeIcon,
+        User: UserIcon
     };
 
     // Fallback for old history data
@@ -42,10 +45,13 @@ const AgentAvatar = ({ agent }: { agent: string }) => {
     );
 };
 
-export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, isFocused, onReset }) => {
+export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading: initialLoading, isFocused, onReset }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [parsedData, setParsedData] = useState<any>(null);
+    const [chatInput, setChatInput] = useState("");
+    const [isChatting, setIsChatting] = useState(false);
 
+    // Sync parsedData with creation prop when it changes
     useEffect(() => {
         if (creation?.data) {
             setParsedData(creation.data);
@@ -54,8 +60,55 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, i
         }
     }, [creation]);
 
+    // Auto-scroll to bottom of dialogue
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [parsedData?.dialogue, initialLoading, isChatting]);
+
     // Format for JSON display
     const formatJSON = (obj: any) => JSON.stringify(obj, null, 2);
+
+    const handleSendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!chatInput.trim() || !parsedData) return;
+
+        const userMsg = chatInput;
+        setChatInput("");
+        setIsChatting(true);
+
+        // Optimistically update UI
+        const tempState = { ...parsedData };
+        tempState.dialogue = [
+            ...tempState.dialogue,
+            { agent: "User", content: userMsg, emotion: "Curious" }
+        ];
+        setParsedData(tempState);
+
+        try {
+            // Call API to continue simulation
+            // We assume 'Collaborative' as default for chat continuation, or we could pass it from props if needed.
+            const response = await continueMultiAgentSimulation(parsedData, userMsg, "Collaborative");
+            
+            // Merge response
+            setParsedData((prev: any) => ({
+                ...prev,
+                // Append new dialogue
+                dialogue: [...prev.dialogue, ...response.dialogue],
+                // Update memories
+                semantic_memory: response.semantic_memory, // Replace or merge? Replacing is usually safer for consistency
+                episodic_memory: response.episodic_memory,
+                structured_sense_making: response.structured_sense_making
+            }));
+
+        } catch (error) {
+            console.error("Chat Error", error);
+            // Optionally remove user message or show error
+        } finally {
+            setIsChatting(false);
+        }
+    };
 
     return (
     <div
@@ -81,7 +134,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, i
             <div className="flex flex-col">
                 <h3 className="text-sm font-bold text-zinc-100">Mindscape Console</h3>
                 <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">
-                    {isLoading ? 'Processing Neural Weave...' : parsedData ? 'Session Active' : 'Idle'}
+                    {initialLoading ? 'Processing Neural Weave...' : isChatting ? 'Agents Deliberating...' : parsedData ? 'Session Active' : 'Idle'}
                 </span>
             </div>
         </div>
@@ -98,38 +151,78 @@ export const LivePreview: React.FC<LivePreviewProps> = ({ creation, isLoading, i
         
         {/* Left: Dialogue Stream */}
         <div className="w-full md:w-3/5 lg:w-2/3 bg-black/20 flex flex-col border-r border-zinc-800">
+            {/* Scrollable Messages */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
-                {isLoading ? (
+                {initialLoading ? (
                     <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-50">
                         <CpuChipIcon className="w-12 h-12 text-indigo-500 animate-pulse" />
                         <div className="font-mono text-xs text-indigo-400">SIMULATING AGENT INTERACTION...</div>
                     </div>
                 ) : parsedData?.dialogue ? (
-                    parsedData.dialogue.map((turn: any, idx: number) => {
-                        const normalizedAgent = turn.agent === 'Feeler' ? 'Mystic' : turn.agent;
-                        return (
-                            <div key={idx} className="flex space-x-4 animate-in fade-in slide-in-from-bottom-2 duration-500" style={{animationDelay: `${idx * 100}ms`}}>
-                                <AgentAvatar agent={turn.agent} />
-                                <div className="flex-1 space-y-1">
-                                    <div className="flex items-baseline justify-between">
-                                        <span className={`text-xs font-bold uppercase tracking-wider ${
-                                            normalizedAgent === 'Linguist' ? 'text-emerald-500' :
-                                            normalizedAgent === 'Spark' ? 'text-amber-500' :
-                                            normalizedAgent === 'Mystic' ? 'text-violet-500' : 'text-indigo-500'
-                                        }`}>{normalizedAgent}</span>
-                                        {turn.emotion && <span className="text-[10px] text-zinc-600 font-mono italic">[{turn.emotion}]</span>}
+                    <>
+                        {parsedData.dialogue.map((turn: any, idx: number) => {
+                            const normalizedAgent = turn.agent === 'Feeler' ? 'Mystic' : turn.agent;
+                            const isUser = normalizedAgent === 'User';
+                            
+                            return (
+                                <div key={idx} className={`flex space-x-4 animate-in fade-in slide-in-from-bottom-2 duration-500 ${isUser ? 'flex-row-reverse space-x-reverse' : ''}`} style={{animationDelay: `${Math.min(idx * 50, 500)}ms`}}>
+                                    <AgentAvatar agent={turn.agent} />
+                                    <div className={`flex-1 space-y-1 ${isUser ? 'text-right' : ''}`}>
+                                        <div className={`flex items-baseline justify-between ${isUser ? 'flex-row-reverse' : ''}`}>
+                                            <span className={`text-xs font-bold uppercase tracking-wider ${
+                                                normalizedAgent === 'Linguist' ? 'text-emerald-500' :
+                                                normalizedAgent === 'Spark' ? 'text-amber-500' :
+                                                normalizedAgent === 'Mystic' ? 'text-violet-500' : 
+                                                normalizedAgent === 'User' ? 'text-zinc-400' : 'text-indigo-500'
+                                            }`}>{normalizedAgent}</span>
+                                            {turn.emotion && <span className="text-[10px] text-zinc-600 font-mono italic mx-2">[{turn.emotion}]</span>}
+                                        </div>
+                                        <p className={`text-sm md:text-base leading-relaxed font-light ${isUser ? 'text-zinc-200 bg-zinc-800/50 p-2 rounded-lg inline-block text-left' : 'text-zinc-300'}`}>
+                                            {turn.content}
+                                        </p>
                                     </div>
-                                    <p className="text-sm md:text-base text-zinc-300 leading-relaxed font-light">{turn.content}</p>
                                 </div>
-                            </div>
-                        );
-                    })
+                            );
+                        })}
+                        {isChatting && (
+                             <div className="flex space-x-4 opacity-50">
+                                 <div className="w-8 h-8 rounded-lg bg-zinc-800 animate-pulse"></div>
+                                 <div className="space-y-2 flex-1">
+                                     <div className="h-4 w-24 bg-zinc-800 rounded animate-pulse"></div>
+                                     <div className="h-4 w-3/4 bg-zinc-800 rounded animate-pulse"></div>
+                                 </div>
+                             </div>
+                        )}
+                    </>
                 ) : (
                     <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
                         Waiting for input...
                     </div>
                 )}
             </div>
+
+            {/* Chat Input Bar */}
+            {parsedData && !initialLoading && (
+                <div className="p-4 border-t border-zinc-800 bg-[#0E0E10] shrink-0">
+                    <form onSubmit={handleSendMessage} className="relative flex items-center">
+                        <input
+                            type="text"
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            placeholder="Interject..."
+                            className="w-full bg-zinc-900/50 text-zinc-200 placeholder-zinc-600 border border-zinc-800 rounded-lg py-3 pl-4 pr-12 focus:outline-none focus:border-indigo-500/50 focus:bg-zinc-900 transition-all text-sm"
+                            disabled={isChatting}
+                        />
+                        <button 
+                            type="submit"
+                            disabled={!chatInput.trim() || isChatting}
+                            className="absolute right-2 p-1.5 text-zinc-500 hover:text-indigo-400 disabled:opacity-50 disabled:hover:text-zinc-500 transition-colors"
+                        >
+                            <PaperAirplaneIcon className="w-5 h-5 -rotate-45" />
+                        </button>
+                    </form>
+                </div>
+            )}
         </div>
 
         {/* Right: Memory & Sense-Making (Dashboard) */}

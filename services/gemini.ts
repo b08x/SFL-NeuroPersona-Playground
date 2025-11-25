@@ -22,7 +22,7 @@ const AGENT_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          agent: { type: Type.STRING, enum: ["Linguist", "Spark", "Mystic", "Synthesizer"] },
+          agent: { type: Type.STRING, enum: ["Linguist", "Spark", "Mystic", "Synthesizer", "User"] },
           content: { type: Type.STRING },
           emotion: { type: Type.STRING }
         }
@@ -197,6 +197,54 @@ export async function runMultiAgentSimulation(
     console.error("Agent Simulation Error:", error);
     throw error;
   }
+}
+
+export async function continueMultiAgentSimulation(
+    currentData: any,
+    userMessage: string,
+    collaborationMode: string = 'Collaborative'
+): Promise<any> {
+    const prompt = `
+    CONTINUATION TASK:
+    The user is responding to the current simulation.
+    
+    CURRENT STATE (History):
+    ${JSON.stringify(currentData)}
+    
+    USER MESSAGE:
+    "${userMessage}"
+    
+    INSTRUCTIONS:
+    1. Acknowledge the user's message.
+    2. Have the agents (Linguist, Spark, Mystic) react to the user's input and each other.
+    3. The "User" should be treated as a participant.
+    4. Generate *new* dialogue turns that follow the history.
+    5. Provide *updated* Semantic Memory and Sense Making based on this new turn.
+    6. Keep 'context_description' as "Continued Conversation" unless changed.
+    
+    OUTPUT:
+    Return a JSON object matching the standard schema with the NEW dialogue turns and UPDATED memory state.
+    `;
+
+    try {
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                systemInstruction: SYSTEM_INSTRUCTION_JSON(collaborationMode),
+                responseMimeType: "application/json",
+                responseSchema: AGENT_SCHEMA,
+                temperature: 0.7,
+            },
+        });
+
+        const jsonText = response.text;
+        if (!jsonText) throw new Error("No response generated");
+        return JSON.parse(jsonText);
+    } catch (error) {
+        console.error("Continue Simulation Error:", error);
+        throw error;
+    }
 }
 
 export function connectLiveSession(callbacks: any, collaborationMode: string = 'Collaborative') {
