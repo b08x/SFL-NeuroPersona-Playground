@@ -215,15 +215,17 @@ export async function continueMultiAgentSimulation(
     "${userMessage}"
     
     INSTRUCTIONS:
-    1. Acknowledge the user's message.
-    2. Have the agents (Linguist, Spark, Mystic) react to the user's input and each other.
-    3. The "User" should be treated as a participant.
-    4. Generate *new* dialogue turns that follow the history.
-    5. Provide *updated* Semantic Memory and Sense Making based on this new turn.
-    6. Keep 'context_description' as "Continued Conversation" unless changed.
+    1. **Dialogue**: Generate *new* dialogue turns (Agent: "Linguist", "Spark", "Mystic") responding to the user's input. The "User" is a participant.
     
-    OUTPUT:
-    Return a JSON object matching the standard schema with the NEW dialogue turns and UPDATED memory state.
+    2. **Memory Update (CRITICAL)**:
+       - **Episodic Memory**: Update the summary to include this new interaction as part of the evolving narrative.
+       - **Semantic Memory**: Return the **COMPLETE** list of concepts. You must RETAIN existing concepts from history and ADD new ones derived from this turn.
+       - **Structured Sense Making**: Return the **COMPLETE** list of synthesized insights, refining them or adding new ones based on the user's feedback.
+    
+    3. **Context**: Keep 'context_description' consistent with the original context or set to "Continued Conversation".
+    
+    OUTPUT FORMAT:
+    Return a JSON object matching the standard schema with the NEW dialogue turns and the FULL UPDATED memory state.
     `;
 
     try {
